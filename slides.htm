@@ -1,0 +1,164 @@
+
+<!doctype html>
+<html lang="en">
+
+	<head>
+		<title>Top X SQL Server Developer Mistakes</title>
+		<meta charset="utf-8">
+		<meta name="author" content="Mark S. Rasmussen">
+		<meta name="apple-mobile-web-app-capable" content="yes" />
+		<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+		<link rel="stylesheet" href="css/reveal.css">
+		<link rel="stylesheet" href="css/theme/default.css" id="theme">
+
+		<!-- For syntax highlighting -->
+		<link rel="stylesheet" href="lib/css/zenburn.css">
+
+		<!-- If the query includes 'print-pdf', use the PDF print sheet -->
+		<script>
+			document.write('<link rel="stylesheet" href="css/print/' + (window.location.search.match(/print-pdf/gi) ? 'pdf' : 'paper') + '.css" type="text/css" media="print">');
+		</script>
+
+		<style>
+			
+		</style>
+	</head>
+
+	<body>
+
+		<div class="reveal">
+
+			<div class="slides">
+
+				<!-- Intro -->
+				<section>
+					<h1>TOP X SQL Server Developer Mistakes</h1>
+					<h3>Mark S. Rasmussen</h3>
+					<h3>iPaper A/S</h3>
+				</section>
+
+				<section>
+					<h2>Who Am I</h2>
+					<ul>
+						<li>Tech Lead @ iPaper A/S</li>
+						<li>Comp.Sci @ Aarhus University</li>
+						<li>Presenter</li>
+						<li>SQL Server MVP</li>
+					</ul>
+				</section>
+
+
+				<!-- The manual UPSERT -->
+				<section>
+					<section>
+						<h1>The manual UPSERT</h1>
+					</section>
+
+					<section>
+						<h2>The setup</h2>
+						<pre><code>
+CREATE TABLE #Pages (
+	Name varchar(128),
+	Hits int
+)
+						</code></pre>
+					</section>
+
+					<section>
+						<h2>Method 1: SELECT + INSERT/UPDATE</h2>
+
+						Step 1 - Select
+						<pre><code>
+SELECT * FROM Pages WHERE Name = 'Test'
+						</code></pre>
+						<br />
+
+						<div class="fragment">
+							Step 2 - Insert
+							<pre><code>
+INSERT INTO Pages (Name, Hits) VALUES ('Test', 1)
+							</code></pre>
+							<br />
+						</div>
+
+						<div class="fragment">
+							Step 2 - Update
+							<pre><code>
+UPDATE Pages SET Hits = Hits + 1 WHERE Name = 'Test'
+							</code></pre>
+						</div>
+					</section>
+
+					<section>
+						<h2>Method 1: Problems</h2>
+						<ul>
+							<li>Chatty</li>
+							<li class="fragment">Two lookups</li>
+							<li class="fragment">Needs pessimistic isolation</li>
+							<li class="fragment">Needs UPDLOCK hint</li>
+						</ul>
+						<br />
+						<br />
+						<pre class="fragment"><code>
+SELECT * FROM Pages WITH (UPDLOCK) WHERE Name = 'Test'
+						</code></pre>
+					</section>
+
+					<section>
+						<h2>Method 2: Optimistic update</h2>
+						Step 1 - Update
+						<pre><code>
+var rowsModified = new SqlCommand("UPDATE Pages SET Hits = Hits + 1 WHERE Name = 'Test'").ExecuteNonQuery();
+						</code></pre>
+						<br />
+
+						<div class="fragment">
+							Step 2 - if (rowsModified == 0)
+							<pre><code>
+	INSERT INTO Pages (Name, Hits) VALUES ('Test', 1)
+							</code></pre>
+							<br />
+						</div>
+					</section>
+				</section>
+
+
+				<!-- Outro -->
+				<section>
+					<h2>Ask me anything</h2>
+					<a href="http://twitter.com/improvedk">twitter.com/improvedk</a><br />
+					<a href="http://improve.dk">improve.dk</a><br />
+					<a href="mailto:mark@improve.dk">mark@improve.dk</a>
+				</section>
+
+			</div>
+
+		</div>
+
+		<script src="lib/js/head.min.js"></script>
+		<script src="js/reveal.min.js"></script>
+
+		<script>
+			Reveal.initialize({
+				controls: true,
+				progress: true,
+				history: true,
+				center: true,
+				overview: true,
+				autoSlide: 0,
+				rollingLinks: false,
+				transition: 'default',
+
+				dependencies: [
+					{ src: 'lib/js/classList.js', condition: function () { return !document.body.classList; } },
+					{ src: 'plugin/markdown/showdown.js', condition: function () { return !!document.querySelector('[data-markdown]'); } },
+					{ src: 'plugin/markdown/markdown.js', condition: function () { return !!document.querySelector('[data-markdown]'); } },
+					{ src: 'plugin/highlight/highlight.js', async: true, callback: function () { hljs.initHighlightingOnLoad(); } },
+					{ src: 'plugin/zoom-js/zoom.js', async: true, condition: function () { return !!document.body.classList; } },
+				]
+			});
+
+		</script>
+
+	</body>
+</html>
