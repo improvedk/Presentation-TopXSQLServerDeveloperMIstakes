@@ -90,17 +90,19 @@ UPDATE Pages SET Hits = Hits + 1 WHERE Name = 'Test'
 					</section>
 
 					<section>
-						<h2>Method 1: Problems</h2>
+						<h2>Method 1 - Pros/Cons</h2>
 						<ul>
-							<li>Chatty</li>
-							<li class="fragment">Two lookups</li>
-							<li class="fragment">Needs pessimistic isolation</li>
-							<li class="fragment">Needs UPDLOCK hint</li>
+							<li>&divide; Chatty</li>
+							<li class="fragment">&divide; Two lookups</li>
+							<li class="fragment">&divide; Needs pessimistic isolation</li>
+							<li class="fragment">&divide; Needs UPDLOCK hint</li>
 						</ul>
 						<br />
 						<br />
 						<pre class="fragment"><code>
-SELECT * FROM Pages WITH (UPDLOCK) WHERE Name = 'Test'
+using (var ts = new TransactionScope()) {
+	SELECT * FROM Pages WITH (UPDLOCK) WHERE Name = 'Test'
+	...
 						</code></pre>
 					</section>
 
@@ -115,10 +117,52 @@ var rowsModified = new SqlCommand("UPDATE Pages SET Hits = Hits + 1 WHERE Name =
 						<div class="fragment">
 							Step 2 - if (rowsModified == 0)
 							<pre><code>
-	INSERT INTO Pages (Name, Hits) VALUES ('Test', 1)
+INSERT INTO Pages (Name, Hits) VALUES ('Test', 1)
 							</code></pre>
 							<br />
 						</div>
+					</section>
+
+					<section>
+						<h2>Method 2 - Pros/Cons</h2>
+						<ul>
+							<li>+ Not chatty (optimistically)</li>
+							<li class="fragment">+ One lookup (optimistically)</li>
+							<li class="fragment">&divide; Needs pessimistic isolation</li>
+						</ul>
+						<br />
+						<br />
+						<pre class="fragment"><code>
+using (var ts = new TransactionScope()) {
+	SELECT * FROM Pages WITH (UPDLOCK) WHERE Name = 'Test'
+	...
+						</code></pre>
+					</section>
+
+					<section>
+						<h2>Method 3: Merge</h2>
+						<pre><code>
+MERGE
+	Pages AS Target
+USING
+	(SELECT 'Test', 1) AS Source (Name, Hits)
+ON
+	Target.Name = Source.Name
+WHEN MATCHED THEN
+	UPDATE SET Target.Hits = Target.Hits + Source.Hits
+WHEN NOT MATCHED BY TARGET THEN
+	INSERT (Name, Hits) VALUES (Source.Name, Source.Hits)
+						</code></pre>
+						<br />
+					</section>
+
+					<section>
+						<h2>Method 3 - Pros/Cons</h2>
+						<ul>
+							<li>+ Not chatty (always)</li>
+							<li class="fragment">+ One lookup (always)</li>
+							<li class="fragment">+ Atomic operation</li>
+						</ul>
 					</section>
 				</section>
 
