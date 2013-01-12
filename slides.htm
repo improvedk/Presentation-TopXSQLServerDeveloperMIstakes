@@ -110,7 +110,9 @@ using (var ts = new TransactionScope()) {
 						<h2>Method 2: Optimistic update</h2>
 						Step 1 - Update
 						<pre><code>
-var rowsModified = new SqlCommand("UPDATE Pages SET Hits = Hits + 1 WHERE Name = 'Test'").ExecuteNonQuery();
+var rowsModified = new SqlCommand(
+	"UPDATE Pages SET Hits = Hits + 1 WHERE Name = 'Test'"
+).ExecuteNonQuery();
 						</code></pre>
 						<br />
 
@@ -382,14 +384,88 @@ SELECT Name FROM CTE
 					</section>
 
 					<section>
-						<h2>The setup 1/3</h2>
+						<h2>Deviously simple queries</h2>
 						<pre><code>
-CREATE TABLE Categories (
-	ID int,
-	ParentID int,
-	Name varchar(128)
-)
+void DeleteUser(int userID)
+{
+	string sql = "DELETE FROM Users WHERE UserID = " + userID;
+
+	DB.Execute(sql);
+}
 						</code></pre>
+					</section>
+
+					<section>
+						<h2>Exploring the cache</h2>
+						<pre><code>
+SELECT TOP 100
+	CP.refcounts,
+	CP.usecounts,
+	CP.size_in_bytes,
+	CP.cacheobjtype,
+	CP.objtype,
+	sql_text.text,
+	query_plan.query_plan,
+	CP.plan_handle
+FROM
+	sys.dm_exec_cached_plans CP
+OUTER APPLY
+	sys.dm_exec_sql_text(plan_handle) AS sql_text
+OUTER APPLY
+	sys.dm_exec_query_plan(plan_handle) AS query_plan
+ORDER BY
+	CP.usecounts DESC/ASC -- Most/least used plans
+						</code></pre>
+					</section>
+
+					<section>
+						<h2>Most used plans</h2>
+						<img src="images/most_used_plans.png" />
+					</section>
+
+					<section>
+						<h2>Least used plans</h2>
+						<img src="images/least_used_plans.png" />
+					</section>
+
+					<section>
+						<h2>What's the impact?</h2>
+						<pre><code>
+SELECT
+	COUNT(*) AS number_of_cached_plans,
+	SUM(CONVERT(BIGINT, size_in_bytes)) / 1048576 AS size_in_mb
+FROM
+	sys.dm_exec_cached_plans
+						</code></pre>
+						<img src="images/plan_cache_size.png" class="fragment" />
+					</section>
+
+					<section>
+						<h2>Do or do not, there is no try</h2>
+						<pre><code>
+UPDATE
+	tblFEStatsDayHits
+SET
+	LargeHitCount = LargeHitCount + @LargeHitCount,
+	LargeViewCount = LargeViewCount + @LargeViewCount,
+	LargeTraffic = LargeTraffic + @LargeTraffic,
+	SmallViewCount = SmallViewCount + @SmallViewCount,
+	SmallHitCount = SmallHitCount + @SmallHitCount,
+	SmallTraffic = SmallTraffic + @SmallTraffic,
+	ThumbHitCount = ThumbHitCount + @ThumbHitCount,
+	ThumbTraffic = ThumbTraffic + @ThumbTraffic,
+	TotalTraffic = TotalTraffic + @TotalTraffic
+WHERE
+	DayHitID = 7897701
+						</code></pre>
+					</section>
+				</section>
+
+
+				<!-- The Serializable TransactionScope -->
+				<section>
+					<section>
+						<h1>The Serializable TransactionScope</h1>
 					</section>
 				</section>
 
