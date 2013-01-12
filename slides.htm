@@ -20,7 +20,7 @@
 		</script>
 
 		<style>
-			
+			* { tab-size: 4; }
 		</style>
 	</head>
 
@@ -57,7 +57,7 @@
 					<section>
 						<h2>The setup</h2>
 						<pre><code>
-CREATE TABLE #Pages (
+CREATE TABLE Pages (
 	Name varchar(128),
 	Hits int
 )
@@ -163,6 +163,233 @@ WHEN NOT MATCHED BY TARGET THEN
 							<li class="fragment">+ One lookup (always)</li>
 							<li class="fragment">+ Atomic operation</li>
 						</ul>
+					</section>
+				</section>
+
+
+				<!-- The chatty menu -->
+				<section>
+					<section>
+						<h1>The chatty menu</h1>
+					</section>
+
+					<section>
+						<h2>The setup 1/3</h2>
+						<pre><code>
+CREATE TABLE Categories (
+	ID int,
+	ParentID int,
+	Name varchar(128)
+)
+						</code></pre>
+					</section>
+
+					<section>
+						<h2>The setup 2/3</h2>
+						<pre><code>
+INSERT INTO
+	Categories (ID, ParentID, Name)
+VALUES
+	(1, null, 'Root'),
+	(2, 1, 'Languages'),
+	(3, 2, 'C#'),
+	(4, 2, 'T-SQL'),
+	(5, 1, 'Operating systems'),
+	(6, 5, 'OS X'),
+	(7, 5, 'Windows')
+						</code></pre>
+					</section>
+
+					<section>
+						<h2>The setup 3/3</h2>
+						<pre><code>
+	Root
+		Languages
+			C#
+			T-SQL
+		Operating systems
+			OS X
+			Windows
+					    </code></pre>
+					</section>
+
+					<section>
+						<h2>Method 1: Nested selects</h2>
+						<pre><code>
+var cmd = new SqlCommand(@"
+	SELECT * FROM Categories WHERE ParentID = @ParentID");
+
+cmd.Parameters.Add("@ParentID", SqlDbType.Int);
+						</code></pre>
+						<pre class="fragment"><code>
+void PrintMenu(int? parentID, string indent)
+{
+	cmd.Parameters["@ParentID"].Value = parentID;
+
+	foreach (var row in DB.GetRows(cmd)) {
+		Console.WriteLine(indent + row["Name"]);
+
+		PrintMenu(row.Get&lt;int?&gt;(["ID"]), indent + "    ");
+	}
+}
+						</code></pre>
+						<pre class="fragment"><code>
+PrintMenu(null, "");
+					    </code></pre>
+						<br />
+					</section>
+
+					<section>
+						<h2>Method 1 - Pros/Cons</h2>
+						<ul>
+							<li>+ Simple to understand</li>
+							<li class="fragment">&divide; Chatty</li>
+							<li class="fragment">&divide; Dangerous if connections are kept open</li>
+						</ul>
+					</section>
+
+					<section>
+						<h2>Method 2: Clientside</h2>
+						<pre><code>
+var cats = DB.GetEntities&lt;Category&gt;("SELECT * FROM Categories");
+
+PrintMenu(categories, null, "");
+						</code></pre>
+						<pre class="fragment"><code>
+void PrintMenu(List&lt;Category&gt; cats, int? parentID, string indent)
+{
+	cats.Where(x => x.ParentID == parentID).ForEach(x => {
+		Console.WriteLine(indent + cat.Name);
+
+		PrintMenu(cats, cat.ID, indent + "    ");
+	});
+}
+						</code></pre>
+					</section>
+
+					<section>
+						<h2>Method 2 - Pros/Cons</h2>
+						<ul>
+							<li>+ Simple to understand</li>
+							<li class="fragment">+ One call to database</li>
+							<li class="fragment">&divide; Dangerous if connections are kept open</li>
+						</ul>
+					</section>
+
+					<section>
+						<h2>Method 3 - Common Table Expressions</h2>
+						<pre><code>
+	Root
+		<b>Languages
+			C#
+			T-SQL</b>
+		Operating systems
+			OS X
+			Windows
+					    </code></pre>
+					</section>
+
+					<section>
+						<h2>Method 3 - Common Table Expressions</h2>
+						<pre><code>
+WITH CTE AS
+(
+	SELECT &lt;Anchor&gt;
+
+	UNION ALL
+
+	SELECT &lt;Children&gt;
+)
+SELECT * FROM CTE
+					    </code></pre>
+					</section>
+
+					<section>
+						<h2>Method 3 - Common Table Expressions</h2>
+						<pre><code>
+WITH CTE AS
+(
+	SELECT
+		ID,
+		ParentID,
+		Name,
+		4 AS Indent
+	FROM
+		Categories
+	WHERE
+		ParentID IS NULL
+
+	UNION ALL
+
+	SELECT &lt;Children&gt;
+)
+SELECT * FROM CTE
+					    </code></pre>
+					</section>
+
+					<section>
+						<h2>Method 3 - Common Table Expressions</h2>
+						<pre><code>
+WITH CTE AS
+(
+	SELECT
+		ID,
+		ParentID,
+		Name,
+		4 AS Indent
+	FROM
+		Categories
+	WHERE
+		ParentID IS NULL
+
+	UNION ALL
+
+	SELECT
+		C.ID,
+		C.ParentID,
+		CAST(
+			REPLICATE(' ', CTE.Indent) + C.Name AS varchar(128)
+		) AS Name,
+		Indent + 4 AS Indent
+	FROM
+		Categories C
+	INNER JOIN
+		CTE ON C.ParentID = CTE.ID
+)
+SELECT Name FROM CTE
+					    </code></pre>
+					</section>
+
+					<section>
+						<h2>Method 3 - Pros/Cons</h2>
+						<ul>
+							<li>+ One call to database</li>
+							<li class="fragment">+ Set-based logic run in database</li>
+							<li class="fragment">+ Powerful filtering</li>
+							<li class="fragment">&divide; MSSQL (2005+) specific</li>
+						</ul>
+						<br />
+						<br />
+						<p class="fragment"><a href="demos/The chatty menu.sql">Demo</a></p>
+					</section>
+				</section>
+
+
+				<!-- The bloated plan cache -->
+				<section>
+					<section>
+						<h1>The bloated plan cache</h1>
+					</section>
+
+					<section>
+						<h2>The setup 1/3</h2>
+						<pre><code>
+CREATE TABLE Categories (
+	ID int,
+	ParentID int,
+	Name varchar(128)
+)
+						</code></pre>
 					</section>
 				</section>
 
