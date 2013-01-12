@@ -48,6 +48,111 @@
 				</section>
 
 
+				<!-- The Oblivious TransactionScope -->
+				<section>
+					<section>
+						<h1>The Oblivious TransactionScope</h1>
+					</section>
+
+					<section>
+						<h2>.NET 1.1</h2>
+						<pre><code>
+SqlConnection myConnection = new SqlConnection("...");
+	
+using (myConnection)
+{
+	myConnection.Open();
+	
+	try
+	{
+		SqlTransaction myTrans = myConnection.BeginTransaction();
+		
+		SqlCommand myCommand = myConnection.CreateCommand();
+		myCommand.Transaction = myTrans;
+		myCommand.CommandText = "INSERT INTO MyTable ...";
+		myCommand.ExecuteNonQuery();
+		
+		myTrans.Commit();
+	}
+	catch(Exception e)
+	{
+		myTrans.Rollback();
+	}
+}
+						</code></pre>
+					</section>
+
+					<section>
+						<h2>.NET 2.0</h2>
+						<pre><code>
+using (var myConnection = new SqlConnection("..."))
+using (var ts = new TransactionScope())
+{
+	myConnection.Open();
+	
+	SqlCommand myCommand = myConnection.CreateCommand();
+	myCommand.CommandText = "INSERT INTO MyTable ...";
+	myCommand.ExecuteNonQuery();
+	
+	ts.Complete();
+}
+						</code></pre>
+					</section>
+
+					<section>
+						<h2>Isolation Levels 101</h2>
+						<img src="images/isolation_levels.png" />
+					</section>
+
+					<section>
+						<h2>Specifying the Isolation Level</h2>
+						<pre><code>
+var options = new TransactionOptions {
+	IsolationLevel = IsolationLevel.ReadCommitted
+}
+
+var scopeOption = TransactionScopeOption.Required;
+
+using (var ts = new TransactionScope(scopeOption, options))
+{
+	...
+}
+						</code></pre>
+					</section>
+
+					<section>
+						<h2>Death to locks and NOLOCK!</h2>
+						<pre><code>
+SELECT COUNT(*) FROM Visitors WHERE CatalogID = @CatalogID
+						</code></pre>
+						<pre class="fragment"><code>
+SELECT COUNT(*) FROM Visitors WITH (NOLOCK) WHERE CatalogID = @CatalogID
+						</code></pre>
+						<pre class="fragment"><code>
+var options = new TransactionOptions {
+	IsolationLevel = IsolationLevel.ReadUncommitted
+}
+
+var scopeOption = TransactionScopeOption.Required;
+
+using (var ts = new TransactionScope(scopeOption, options))
+{
+	...
+}
+						</code></pre>
+					</section>
+
+					<section>
+						<h2>Beware of Escalation</h2>
+						<img src="images/dtc.png" />
+					</section>
+
+					<section>
+						<h2>Escalation Causes</h2>
+						<img src="images/dtc_escalation.png" />
+					</section>
+				</section>
+
 				<!-- The manual UPSERT -->
 				<section>
 					<section>
@@ -167,7 +272,6 @@ WHEN NOT MATCHED BY TARGET THEN
 						</ul>
 					</section>
 				</section>
-
 
 				<!-- The chatty menu -->
 				<section>
@@ -376,7 +480,6 @@ SELECT Name FROM CTE
 					</section>
 				</section>
 
-
 				<!-- The bloated plan cache -->
 				<section>
 					<section>
@@ -458,14 +561,6 @@ SET
 WHERE
 	DayHitID = 7897701
 						</code></pre>
-					</section>
-				</section>
-
-
-				<!-- The Serializable TransactionScope -->
-				<section>
-					<section>
-						<h1>The Serializable TransactionScope</h1>
 					</section>
 				</section>
 
