@@ -21,6 +21,7 @@
 
 		<style>
 			* { tab-size: 4; }
+			table.batchinputdata thead td { font-weight: bold; }
 		</style>
 	</head>
 
@@ -605,7 +606,79 @@ cmd.ExecuteNonQuery();
 					</section>
 
 					<section>
-						<h2>Batching batches</h2>
+						<h2>Batching Batches</h2>
+						<pre><code>
+for (int i=1; i<=20; i++)
+{
+	byte[] imageBytes = createImage(...);
+	File.WriteAllBytes(i + ".jpg", imageBytes);
+	
+	var cmd = new SqlCommand(
+		"INSERT INTO Images VALUES (@Number, @Size)");
+	cmd.Parameters.Add("@Number").Value = i;
+	cmd.Parameters.Add("@Size").Value = imageBytes.Length;
+	cmd.ExecuteNonQuery();
+}
+						</code></pre>
+					</section>
+
+					<section>
+						<h2>Batching Batches</h2>
+						<pre><code>
+using (var cmdSet = new SqlCommandSet())
+{
+	for (int i=1; i<=20; i++)
+	{
+		byte[] imageBytes = createImage(...);
+		string path = basePath + i + ".jpg";
+		File.WriteAllBytes(path, imageBytes);
+		
+		var cmd = new SqlCommand(
+			"INSERT INTO Images VALUES (@Number, @Size)");
+		cmd.Parameters.Add("@Number").Value = i;
+		cmd.Parameters.Add("@Size").Value = imageBytes.Length;
+		cmdSet.Append(cmd);
+	}
+	
+	cmdSet.ExecuteNonQuery();
+}
+						</code></pre>
+					</section>
+
+					<section>
+						<h2>Here Be Dragons</h2>
+						<pre><code>
+namespace System.Data.SqlClient
+{
+	internal sealed class SqlCommandSet
+	{
+		...
+	}
+}
+						</code></pre>
+						<br />
+						<a href="https://github.com/ayende/rhino-etl/blob/master/Rhino.Etl.Core/Infrastructure/SqlCommandSet.cs" class="fragment">github.com/ayende/rhino-etl/.../SqlCommandSet.cs</a>
+					</section>
+
+					<section>
+						<h2>Batching Input Data</h2>
+						<table style="margin: auto" class="batchinputdata">
+							<thead>
+								<tr>
+									<th style="text-align: center; padding: 0 30px 0 30px">@Number</th>
+									<th style="text-align: center; padding: 0 30px 0 30px">@Size</th>
+								</tr>
+							</thead>
+							<tbody>
+								<tr>
+									<td style="text-align: center">1</td>
+									<td style="text-align: center">9745</td>
+								</tr>
+								<tr>
+									<td style="text-align: center">2</td>
+									<td style="text-align: center">7422</td>
+								</tr>
+						</table>
 					</section>
 				</section>
 
