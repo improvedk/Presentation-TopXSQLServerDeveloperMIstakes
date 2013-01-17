@@ -4,7 +4,7 @@ using (var conn = new SqlConnection(@"Data Source=.;Initial Catalog=TopXDevelope
 {
 	conn.Open();
 
-	for (int i = 1; i <= 10000; i++)
+	for (int i = 1; i <= 25000; i++)
 	{
 		SqlCommand cmd = new SqlCommand(@"
 			INSERT INTO

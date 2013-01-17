@@ -33,21 +33,33 @@
 
 				<!-- Intro -->
 				<section>
-					<h1>TOP X SQL Server Developer Mistakes</h1>
-					<h3>Mark S. Rasmussen</h3>
-					<h3>iPaper A/S</h3>
-				</section>
+					<section>
+						<h1>TOP X SQL Server Developer Mistakes</h1>
+						<h3>Mark S. Rasmussen</h3>
+						<h3>iPaper A/S</h3>
+					</section>
 
-				<section>
-					<h2>Who Am I</h2>
-					<ul>
-						<li>Tech Lead @ iPaper A/S</li>
-						<li>Comp.Sci @ Aarhus University</li>
-						<li>Presenter</li>
-						<li>SQL Server MVP</li>
-					</ul>
-				</section>
+					<section>
+						<h2>Who Am I</h2>
+						<ul>
+							<li>Tech Lead @ iPaper A/S</li>
+							<li>Comp.Sci @ Aarhus University</li>
+							<li>Presenter</li>
+							<li>SQL Server MVP</li>
+							<li>Author of OrcaMDF</li>
+						</ul>
+					</section>
 
+					<section>
+						<h2>What Is This?</h2>
+						<ul>
+							<li>Mistakes</li>
+							<li>Suboptimal solutions</li>
+							<li>Tips</li>
+							<li>Pseudocode</li>
+						</ul>
+					</section>
+				</section>
 
 				<!-- The Oblivious TransactionScope -->
 				<section>
@@ -86,71 +98,105 @@ using (myConnection)
 					<section>
 						<h2>.NET 2.0</h2>
 						<pre><code>
-using (var myConnection = new SqlConnection("..."))
-using (var ts = new TransactionScope())
-{
-	myConnection.Open();
+	using (var ts = new TransactionScope())
+	using (var myConnection = new SqlConnection("..."))
+	{
+		myConnection.Open();
 	
-	SqlCommand myCommand = myConnection.CreateCommand();
-	myCommand.CommandText = "INSERT INTO MyTable ...";
-	myCommand.ExecuteNonQuery();
+		SqlCommand myCommand = myConnection.CreateCommand();
+		myCommand.CommandText = "INSERT INTO MyTable ...";
+		myCommand.ExecuteNonQuery();
 	
-	ts.Complete();
-}
+		ts.Complete();
+	}
 						</code></pre>
 					</section>
 
 					<section>
 						<h2>Isolation Levels 101</h2>
 						<img src="images/isolation_levels.png" />
-					</section>
-
-					<section>
-						<h2>Specifying the Isolation Level</h2>
-						<pre><code>
-var options = new TransactionOptions {
-	IsolationLevel = IsolationLevel.ReadCommitted
-}
-
-var scopeOption = TransactionScopeOption.Required;
-
-using (var ts = new TransactionScope(scopeOption, options))
-{
-	...
-}
+						<pre class="fragment"><code>
+	SELECT COUNT(*) FROM Visitors WHERE CatalogID = @CatalogID
 						</code></pre>
 					</section>
 
 					<section>
-						<h2>Death to locks and NOLOCK!</h2>
+						<h2>NOLOCK Hint <span style="text-decoration: line-through">Considered</span> IS Harmful</h2>
 						<pre><code>
-SELECT COUNT(*) FROM Visitors WHERE CatalogID = @CatalogID
+	SELECT
+		COUNT(*)
+	FROM
+		Visitors WITH (NOLOCK)
+	WHERE
+		CatalogID = @CatalogID
 						</code></pre>
 						<pre class="fragment"><code>
-SELECT COUNT(*) FROM Visitors WITH (NOLOCK) WHERE CatalogID = @CatalogID
-						</code></pre>
-						<pre class="fragment"><code>
-var options = new TransactionOptions {
-	IsolationLevel = IsolationLevel.ReadUncommitted
-}
+	var options = new TransactionOptions {
+		IsolationLevel = IsolationLevel.ReadUncommitted
+	}
 
-var scopeOption = TransactionScopeOption.Required;
+	var scopeOption = TransactionScopeOption.RequiresNew;
 
-using (var ts = new TransactionScope(scopeOption, options))
-{
-	...
-}
+	using (var ts = new TransactionScope(scopeOption, options))
+	{
+		...
+	}
 						</code></pre>
+					</section>
+				</section>
+
+				<!-- The Unintended Escalation -->
+				<section>
+					<section>
+						<h1>The Unintended Escalation</h1>
 					</section>
 
 					<section>
-						<h2>Beware of Escalation</h2>
+						<h2>MSDTC Escalation</h2>
 						<img src="images/dtc.png" />
 					</section>
 
 					<section>
 						<h2>Escalation Causes</h2>
 						<img src="images/dtc_escalation.png" />
+					</section>
+
+					<section>
+						<h2>Are We Escalating?</h2>
+						<img src="images/dtc_waits.png" />
+					</section>
+
+					<section>
+						<h2>Querying Wait Statistics</h2>
+						<pre><code>
+SELECT
+	*,
+	wait_time_ms / waiting_tasks_count AS wait_per_task_ms,
+	CONVERT(float, signal_wait_time_ms) / CONVERT(float, (wait_time_ms - signal_wait_time_ms)) * 100 AS signal_wait_percentage,
+	CASE
+		WHEN CONVERT(float, signal_wait_time_ms) / CONVERT(float, (wait_time_ms - signal_wait_time_ms)) * 100 > 25 THEN
+			'CPU'
+		ELSE
+			'IO'
+	END AS wait_resource_type
+FROM
+	sys.dm_os_wait_stats
+WHERE
+	wait_time_ms - signal_wait_time_ms > 0 AND
+	wait_type NOT IN (
+		'CLR_SEMAPHORE', 'LAZYWRITER_SLEEP', 'RESOURCE_QUEUE', 'SLEEP_TASK',
+        'SLEEP_SYSTEMTASK', 'SQLTRACE_BUFFER_FLUSH', 'WAITFOR', 'LOGMGR_QUEUE',
+        'CHECKPOINT_QUEUE', 'REQUEST_FOR_DEADLOCK_SEARCH', 'XE_TIMER_EVENT', 'BROKER_TO_FLUSH',
+        'BROKER_TASK_STOP', 'CLR_MANUAL_EVENT', 'CLR_AUTO_EVENT', 'DISPATCHER_QUEUE_SEMAPHORE',
+        'FT_IFTS_SCHEDULER_IDLE_WAIT', 'XE_DISPATCHER_WAIT', 'XE_DISPATCHER_JOIN', 'BROKER_EVENTHANDLER',
+        'TRACEWRITE', 'FT_IFTSHC_MUTEX', 'SQLTRACE_INCREMENTAL_FLUSH_SLEEP',
+        'BROKER_RECEIVE_WAITFOR', 'ONDEMAND_TASK_QUEUE', 'DBMIRROR_EVENTS_QUEUE',
+        'DBMIRRORING_CMD', 'BROKER_TRANSMITTER', 'SQLTRACE_WAIT_ENTRIES',
+        'SLEEP_BPOOL_FLUSH', 'SQLTRACE_LOCK'
+	)
+ORDER BY
+	wait_time_ms DESC
+						</code></pre>
 					</section>
 				</section>
 
@@ -163,11 +209,13 @@ using (var ts = new TransactionScope(scopeOption, options))
 					<section>
 						<h2>The setup</h2>
 						<pre><code>
-CREATE TABLE Pages (
-	Name varchar(128),
-	Hits int
-)
+	CREATE TABLE Pages (
+		Name varchar(128),
+		Hits int
+	)
 						</code></pre>
+						<br />
+						Goal: Hits++
 					</section>
 
 					<section>
@@ -175,22 +223,17 @@ CREATE TABLE Pages (
 
 						Step 1 - Select
 						<pre><code>
-SELECT * FROM Pages WHERE Name = 'Test'
+	SELECT * FROM Pages WHERE Name = 'Test'
 						</code></pre>
 						<br />
 
 						<div class="fragment">
-							Step 2 - Insert
+							Step 2 - Insert / Update
 							<pre><code>
-INSERT INTO Pages (Name, Hits) VALUES ('Test', 1)
+	INSERT INTO Pages (Name, Hits) VALUES ('Test', 1)
 							</code></pre>
-							<br />
-						</div>
-
-						<div class="fragment">
-							Step 2 - Update
 							<pre><code>
-UPDATE Pages SET Hits = Hits + 1 WHERE Name = 'Test'
+	UPDATE Pages SET Hits = Hits + 1 WHERE Name = 'Test'
 							</code></pre>
 						</div>
 					</section>
@@ -201,14 +244,15 @@ UPDATE Pages SET Hits = Hits + 1 WHERE Name = 'Test'
 							<li>&divide; Chatty</li>
 							<li class="fragment">&divide; Two lookups</li>
 							<li class="fragment">&divide; Needs pessimistic isolation</li>
+							<li class="fragment">Demo: UPDLOCK</li>
 							<li class="fragment">&divide; Needs UPDLOCK hint</li>
 						</ul>
 						<br />
 						<br />
 						<pre class="fragment"><code>
-using (var ts = new TransactionScope()) {
-	SELECT * FROM Pages WITH (UPDLOCK) WHERE Name = 'Test'
-	...
+	using (var ts = new TransactionScope()) {
+		SELECT * FROM Pages WITH (UPDLOCK) WHERE Name = 'Test'
+		...
 						</code></pre>
 					</section>
 
@@ -216,16 +260,16 @@ using (var ts = new TransactionScope()) {
 						<h2>Method 2: Optimistic update</h2>
 						Step 1 - Update
 						<pre><code>
-var rowsModified = new SqlCommand(
-	"UPDATE Pages SET Hits = Hits + 1 WHERE Name = 'Test'"
-).ExecuteNonQuery();
+	var rowsModified = new SqlCommand(
+		"UPDATE Pages SET Hits = Hits + 1 WHERE Name = 'Test'"
+	).ExecuteNonQuery();
 						</code></pre>
 						<br />
 
 						<div class="fragment">
 							Step 2 - if (rowsModified == 0)
 							<pre><code>
-INSERT INTO Pages (Name, Hits) VALUES ('Test', 1)
+	INSERT INTO Pages (Name, Hits) VALUES ('Test', 1)
 							</code></pre>
 							<br />
 						</div>
@@ -234,32 +278,42 @@ INSERT INTO Pages (Name, Hits) VALUES ('Test', 1)
 					<section>
 						<h2>Method 2 - Pros/Cons</h2>
 						<ul>
-							<li>+ Not chatty (optimistically)</li>
-							<li class="fragment">+ One lookup (optimistically)</li>
-							<li class="fragment">&divide; Needs pessimistic isolation</li>
+							<li>+ Not chatty (usually)</li>
+							<li class="fragment">+ One lookup (usually)</li>
+							<li class="fragment">&divide; Still needs pessimistic isolation</li>
 						</ul>
-						<br />
-						<br />
-						<pre class="fragment"><code>
-using (var ts = new TransactionScope()) {
-	SELECT * FROM Pages WITH (UPDLOCK) WHERE Name = 'Test'
-	...
-						</code></pre>
 					</section>
 
 					<section>
 						<h2>Method 3: Merge</h2>
 						<pre><code>
-MERGE
-	Pages AS Target
-USING
-	(SELECT 'Test', 1) AS Source (Name, Hits)
-ON
-	Target.Name = Source.Name
-WHEN MATCHED THEN
-	UPDATE SET Target.Hits = Target.Hits + Source.Hits
-WHEN NOT MATCHED BY TARGET THEN
-	INSERT (Name, Hits) VALUES (Source.Name, Source.Hits)
+	MERGE
+		Pages AS Target
+	USING
+		(SELECT @PageName, 1) AS Source (Name, Hits)
+	ON
+		Target.Name = Source.Name
+	WHEN MATCHED THEN
+		UPDATE SET Target.Hits = Target.Hits + Source.Hits
+	WHEN NOT MATCHED BY TARGET THEN
+		INSERT (Name, Hits) VALUES (Source.Name, Source.Hits)
+						</code></pre>
+						<br />
+					</section>
+
+					<section>
+						<h2>Hold Your Locks!</h2>
+						<pre><code>
+	MERGE
+		Pages AS Target <b style="font-style: italic">WITH (HOLDLOCK)</b>
+	USING
+		(SELECT @PageName, 1) AS Source (Name, Hits)
+	ON
+		Target.Name = Source.Name
+	WHEN MATCHED THEN
+		UPDATE SET Target.Hits = Target.Hits + Source.Hits
+	WHEN NOT MATCHED BY TARGET THEN
+		INSERT (Name, Hits) VALUES (Source.Name, Source.Hits)
 						</code></pre>
 						<br />
 					</section>
@@ -270,6 +324,7 @@ WHEN NOT MATCHED BY TARGET THEN
 							<li>+ Not chatty (always)</li>
 							<li class="fragment">+ One lookup (always)</li>
 							<li class="fragment">+ Atomic operation</li>
+							<li class="fragment">&divide; SQL Server 2008+</li>
 						</ul>
 					</section>
 				</section>
@@ -283,27 +338,27 @@ WHEN NOT MATCHED BY TARGET THEN
 					<section>
 						<h2>The setup 1/3</h2>
 						<pre><code>
-CREATE TABLE Categories (
-	ID int,
-	ParentID int,
-	Name varchar(128)
-)
+	CREATE TABLE Categories (
+		ID int,
+		ParentID int,
+		Name varchar(128)
+	)
 						</code></pre>
 					</section>
 
 					<section>
 						<h2>The setup 2/3</h2>
 						<pre><code>
-INSERT INTO
-	Categories (ID, ParentID, Name)
-VALUES
-	(1, null, 'Root'),
-	(2, 1, 'Languages'),
-	(3, 2, 'C#'),
-	(4, 2, 'T-SQL'),
-	(5, 1, 'Operating systems'),
-	(6, 5, 'OS X'),
-	(7, 5, 'Windows')
+	INSERT INTO
+		Categories (ID, ParentID, Name)
+	VALUES
+		(1, null, 'Root'),
+		(2, 1, 'Languages'),
+		(3, 2, 'C#'),
+		(4, 2, 'T-SQL'),
+		(5, 1, 'Operating systems'),
+		(6, 5, 'OS X'),
+		(7, 5, 'Windows')
 						</code></pre>
 					</section>
 
@@ -321,33 +376,33 @@ VALUES
 					</section>
 
 					<section>
-						<h2>Method 1: Nested selects</h2>
+						<h2>Method 1: Recursive selects</h2>
 						<pre><code>
-var cmd = new SqlCommand(@"
-	SELECT * FROM Categories WHERE ParentID = @ParentID");
+	var cmd = new SqlCommand(@"
+		SELECT * FROM Categories WHERE ParentID = @ParentID");
 
-cmd.Parameters.Add("@ParentID", SqlDbType.Int);
+	cmd.Parameters.Add("@ParentID", SqlDbType.Int);
 						</code></pre>
 						<pre class="fragment"><code>
-void PrintMenu(int? parentID, string indent)
-{
-	cmd.Parameters["@ParentID"].Value = parentID;
+	void PrintMenu(int? parentID, string indent)
+	{
+		cmd.Parameters["@ParentID"].Value = parentID;
 
-	foreach (var row in DB.GetRows(cmd)) {
-		Console.WriteLine(indent + row["Name"]);
+		foreach (var row in DB.GetRows(cmd)) {
+			Console.WriteLine(indent + row["Name"]);
 
-		PrintMenu(row.Get&lt;int?&gt;(["ID"]), indent + "    ");
+			PrintMenu(row.Get&lt;int?&gt;("ID"), indent + "    ");
+		}
 	}
-}
 						</code></pre>
 						<pre class="fragment"><code>
-PrintMenu(null, "");
+	PrintMenu(null, "");
 					    </code></pre>
 						<br />
 					</section>
 
 					<section>
-						<h2>Method 1 - Pros/Cons</h2>
+						<h2>Method 1: Pros/Cons</h2>
 						<ul>
 							<li>+ Simple to understand</li>
 							<li class="fragment">&divide; Chatty</li>
@@ -375,16 +430,16 @@ void PrintMenu(List&lt;Category&gt; cats, int? parentID, string indent)
 					</section>
 
 					<section>
-						<h2>Method 2 - Pros/Cons</h2>
+						<h2>Method 2: Pros/Cons</h2>
 						<ul>
 							<li>+ Simple to understand</li>
 							<li class="fragment">+ One call to database</li>
-							<li class="fragment">&divide; Dangerous if connections are kept open</li>
+							<li class="fragment">&divide; What if we don't want everything?</li>
 						</ul>
 					</section>
 
 					<section>
-						<h2>Method 3 - Common Table Expressions</h2>
+						<h2>Method 3: Common Table Expressions</h2>
 						<pre><code>
 	Root
 		<b>Languages
@@ -397,7 +452,7 @@ void PrintMenu(List&lt;Category&gt; cats, int? parentID, string indent)
 					</section>
 
 					<section>
-						<h2>Method 3 - Common Table Expressions</h2>
+						<h2>Method 3: Common Table Expressions</h2>
 						<pre><code>
 WITH CTE AS
 (
@@ -412,7 +467,7 @@ SELECT * FROM CTE
 					</section>
 
 					<section>
-						<h2>Method 3 - Common Table Expressions</h2>
+						<h2>Method 3: Common Table Expressions</h2>
 						<pre><code>
 WITH CTE AS
 (
@@ -435,7 +490,7 @@ SELECT * FROM CTE
 					</section>
 
 					<section>
-						<h2>Method 3 - Common Table Expressions</h2>
+						<h2>Method 3: Common Table Expressions</h2>
 						<pre><code>
 WITH CTE AS
 (
@@ -468,16 +523,16 @@ SELECT Name FROM CTE
 					</section>
 
 					<section>
-						<h2>Method 3 - Pros/Cons</h2>
+						<h2>Method 3: Pros/Cons</h2>
 						<ul>
 							<li>+ One call to database</li>
 							<li class="fragment">+ Set-based logic run in database</li>
 							<li class="fragment">+ Powerful filtering</li>
-							<li class="fragment">&divide; MSSQL (2005+) specific</li>
+							<li class="fragment">&divide; SQL Server 2005+</li>
 						</ul>
 						<br />
 						<br />
-						<p class="fragment"><a href="demos/The chatty menu.sql">Demo</a></p>
+						<p class="fragment">Demo: The chatty menu</p>
 					</section>
 				</section>
 
@@ -488,37 +543,37 @@ SELECT Name FROM CTE
 					</section>
 
 					<section>
-						<h2>Deviously simple queries</h2>
+						<h2>Deceptively simple queries</h2>
 						<pre><code>
-void DeleteUser(int userID)
-{
-	string sql = "DELETE FROM Users WHERE UserID = " + userID;
+	void DeleteUser(int userID)
+	{
+		var sql = "DELETE FROM Users WHERE UserID = " + userID;
 
-	DB.Execute(sql);
-}
+		DB.Execute(sql);
+	}
 						</code></pre>
 					</section>
 
 					<section>
 						<h2>Exploring the cache</h2>
 						<pre><code>
-SELECT TOP 100
-	CP.refcounts,
-	CP.usecounts,
-	CP.size_in_bytes,
-	CP.cacheobjtype,
-	CP.objtype,
-	sql_text.text,
-	query_plan.query_plan,
-	CP.plan_handle
-FROM
-	sys.dm_exec_cached_plans CP
-OUTER APPLY
-	sys.dm_exec_sql_text(plan_handle) AS sql_text
-OUTER APPLY
-	sys.dm_exec_query_plan(plan_handle) AS query_plan
-ORDER BY
-	CP.usecounts DESC/ASC -- Most/least used plans
+	SELECT TOP 100
+		CP.refcounts,
+		CP.usecounts,
+		CP.size_in_bytes,
+		CP.cacheobjtype,
+		CP.objtype,
+		sql_text.text,
+		query_plan.query_plan,
+		CP.plan_handle
+	FROM
+		sys.dm_exec_cached_plans CP
+	OUTER APPLY
+		sys.dm_exec_sql_text(plan_handle) AS sql_text
+	OUTER APPLY
+		sys.dm_exec_query_plan(plan_handle) AS query_plan
+	ORDER BY
+		CP.usecounts DESC/ASC -- Most/least used plans
 						</code></pre>
 					</section>
 
@@ -535,11 +590,11 @@ ORDER BY
 					<section>
 						<h2>What's the impact?</h2>
 						<pre><code>
-SELECT
-	COUNT(*) AS number_of_cached_plans,
-	SUM(CONVERT(BIGINT, size_in_bytes)) / 1048576 AS size_in_mb
-FROM
-	sys.dm_exec_cached_plans
+	SELECT
+		COUNT(*) AS number_of_cached_plans,
+		SUM(CONVERT(BIGINT, size_in_bytes)) / 1048576 AS mb
+	FROM
+		sys.dm_exec_cached_plans
 						</code></pre>
 						<img src="images/plan_cache_size.png" class="fragment" />
 					</section>
@@ -547,20 +602,20 @@ FROM
 					<section>
 						<h2>Do or do not, there is no try</h2>
 						<pre><code>
-UPDATE
-	tblFEStatsDayHits
-SET
-	LargeHitCount = LargeHitCount + @LargeHitCount,
-	LargeViewCount = LargeViewCount + @LargeViewCount,
-	LargeTraffic = LargeTraffic + @LargeTraffic,
-	SmallViewCount = SmallViewCount + @SmallViewCount,
-	SmallHitCount = SmallHitCount + @SmallHitCount,
-	SmallTraffic = SmallTraffic + @SmallTraffic,
-	ThumbHitCount = ThumbHitCount + @ThumbHitCount,
-	ThumbTraffic = ThumbTraffic + @ThumbTraffic,
-	TotalTraffic = TotalTraffic + @TotalTraffic
-WHERE
-	DayHitID = 7897701
+	UPDATE
+		tblFEStatsDayHits
+	SET
+		LargeHitCount = LargeHitCount + @LargeHitCount,
+		LargeViewCount = LargeViewCount + @LargeViewCount,
+		LargeTraffic = LargeTraffic + @LargeTraffic,
+		SmallViewCount = SmallViewCount + @SmallViewCount,
+		SmallHitCount = SmallHitCount + @SmallHitCount,
+		SmallTraffic = SmallTraffic + @SmallTraffic,
+		ThumbHitCount = ThumbHitCount + @ThumbHitCount,
+		ThumbTraffic = ThumbTraffic + @ThumbTraffic,
+		TotalTraffic = TotalTraffic + @TotalTraffic
+	WHERE
+		DayHitID = 7897701
 						</code></pre>
 					</section>
 				</section>
@@ -575,9 +630,9 @@ WHERE
 						<h2>Comes in many forms</h2>
 						<ul>
 							<li>Batching statements</li>
-							<li class="fragment">Batching batches</li>
-							<li class="fragment">Batching input data</li>
-							<li class="fragment">Batching disk IO</li>
+							<li>Batching batches</li>
+							<li>Batching input data</li>
+							<li>Batching disk IO</li>
 						</ul>
 					</section>
 
@@ -633,7 +688,7 @@ for (int i=1; i<=20; i++)
 	byte[] imageBytes = createImage(...);
 	File.WriteAllBytes(i + ".jpg", imageBytes);
 	
-	sb.Append("INSERT Images VALUES (@Number"+i+", @Size"+i+")");
+	sb.Append("INSERT Images VALUES (@Number"+i+", @Size"+i+");");
 	cmd.Parameters.Add("@Number" + i).Value = i;
 	cmd.Parameters.Add("@Size" + i).Value = imageBytes.Length;
 }
@@ -770,6 +825,46 @@ cmd.ExecuteNonQuery();
 							Demo: Many Commits
 						</p>
 					</section>
+				</section>
+
+				<!-- The ... Index -->
+				<section>
+					<section>
+						<h1>The ... Index</h1>
+					</section>
+
+					<section>
+						<h2>What Are Indexes?</h2>
+						<pre><code>
+	CREATE TABLE Phonebook (
+		Firstname nvarchar(128),
+		Lastname nvarchar(128),
+		Telephone varchar(10)
+	)
+						</code></pre>
+						<pre class="fragment"><code>
+	CREATE UNIQUE CLUSTERED INDEX
+		CX_Lastname_Firstname
+	ON
+		Phonebook (Lastname ASC, Firstname ASC)
+						</code></pre>
+						<pre class="fragment"><code>
+	CREATE NONCLUSTERED INDEX
+		IX_Firstname
+	ON
+		Phonebook (Firstname ASC)
+						</code></pre>
+					</section>
+
+					<!--
+						Show no indexes
+						Create PK - show automatically created clustered index
+						Create new clustered index on ID column instead
+						Explain why single-column indexes don't work
+						Create Address table and reference one to the other - cascading delete
+						Create single-column index on AddressID
+						Explain how index column order matters - Lastname, Telephone vs Telephone, Lastname
+					-->
 				</section>
 
 

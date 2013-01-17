@@ -3,7 +3,7 @@
     <ID>6f1893f0-280f-4d88-a5b4-df41106dddae</ID>
     <Persist>true</Persist>
     <Server>.</Server>
-    <Database>Test</Database>
+    <Database>master</Database>
     <ShowServer>true</ShowServer>
   </Connection>
 </Query>
@@ -19,23 +19,26 @@ GO
 USE TopXDeveloperMistakes
 
 
--- Create table
-CREATE TABLE Images
-(
-	Number smallint,
-	Size int
+-- Setup data
+CREATE TABLE Pages (
+	Name varchar(128),
+	Hits int
 )
 
+INSERT INTO
+	Pages
+VALUES
+	('A', 1),
+	('B', 2)
 
--- Reset waits
-TRUNCATE TABLE Images
-DBCC SQLPERF('sys.dm_os_wait_stats', CLEAR)
+	
+-- Test
+BEGIN TRAN
+SET TRANSACTION ISOLATION LEVEL SERIALIZABLE
 
+SELECT * FROM Pages WHERE Name = 'A'
+--SELECT * FROM Pages WITH (UPDLOCK) WHERE Name = 'A'
 
--- Output waits
-SELECT
-	*
-FROM
-	sys.dm_os_wait_stats
-WHERE
-	wait_type = 'WRITELOG'
+UPDATE Pages SET Hits = Hits + 1 WHERE Name = 'A'
+
+COMMIT
