@@ -305,7 +305,7 @@ ORDER BY
 						<h2>Hold Your Locks!</h2>
 						<pre><code>
 	MERGE
-		Pages AS Target <b style="font-style: italic">WITH (HOLDLOCK)</b>
+		Pages <b style="font-style: italic">WITH (HOLDLOCK)</b> AS Target
 	USING
 		(SELECT @PageName, 1) AS Source (Name, Hits)
 	ON
